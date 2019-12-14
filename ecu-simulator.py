@@ -1,17 +1,21 @@
 #!/usr/bin/env python
-
 from __future__ import print_function
-
+import logging
 from random import randint
-
 import can
 from can.bus import BusState
 
 def service1(bus, msg):
     if msg.data[2] == 0x00:
-        print(">> Caps")
+        logging.info(">> Caps")
         msg = can.Message(arbitration_id=0x7e8,
           data=[0x06, 0x41, 0x00, 0xBF, 0xDF, 0xB9, 0x91],
+          is_extended_id=False)
+        bus.send(msg)
+    elif msg.data[2] in [0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0]:
+        print(">> Extented Pid Support")
+        msg = can.Message(arbitration_id=0x7e8,
+          data=[0x06, 0x41, msg.data[2], 0x00, 0x00, 0x00, 0x00],
           is_extended_id=False)
         bus.send(msg)
     elif msg.data[2] == 0x0C:
@@ -44,12 +48,17 @@ def service1(bus, msg):
           data=[0x03, 0x41, 0x05, 0x82],
           is_extended_id=False)
         bus.send(msg)
+    elif msg.data[2] == 15:
+        print(">> Intake air temperature")
+        msg = can.Message(arbitration_id=0x7e8,
+          data=[0x03, 0x41, 0x0F, 0x56],
+          is_extended_id=False)
+        bus.send(msg)
     else:
         print("!!! Service 1, unknown code", msg.data[2])
 
 
 def receive_all():
-
     bus = can.interface.Bus(bustype='socketcan',channel='can0')
     #bus = can.interface.Bus(bustype='ixxat', channel=0, bitrate=250000)
     #bus = can.interface.Bus(bustype='vector', app_name='CANalyzer', channel=0, bitrate=250000)
@@ -61,11 +70,15 @@ def receive_all():
         while True:
             msg = bus.recv(1)
             if msg is not None:
-                #print(msg)
-                if msg.arbitration_id == 0x7df and msg.data[1] == 0x01:
-                    service1(bus, msg)
-                else:
-                    print("Unknown ID", msg.arbitration_id, "or service code", msg.data[1])
+                #logging.debug(msg)
+                try: 
+                    if msg.arbitration_id == 0x7df and msg.data[1] == 0x01:
+                        service1(bus, msg)
+                    else:
+                        logging.warning(f"Unknown ARBID {msg.arbitration_id}")
+                except:
+                    logging.exception('Message did not conform to OBD PID statdard.')
+
 
     except KeyboardInterrupt:
         pass
